@@ -1,0 +1,75 @@
+---
+title: "Pooled cross-sectional data & policy analysis"
+author: "Anastasiia Livochka, Yarka Lyba"
+date: "27 Apr 2019"
+output:
+  html_document:
+    number_sections: yes
+    theme: readable
+    toc: yes
+---
+Ukrainian-Russian  relations  had  periods  of  ties  and  tensions  after  the  Soviet  Union’s dissolution but generally were cooperative because of inherited joint facilities of production.For  the  people  from  the  east,  it  might  even  seem  friendly.   Russia  disclosed  its  real  faceat  Euromaidan;  Ukraine  lost  control  of  Crimea  and  part  of  Donbass  because  of  Russia naggression.  We consider the war as the most influence event of the recent years. Let's look how it influenced people on the east.
+#Loading data
+```{r}
+library(gridExtra)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+pooled <- read.csv(file="pooled.csv")
+```
+
+#The effect of informational war on eastern people perception of Russia
+Let us firstly look at how youth generally changed its opinion about Ukraine and Russia:
+```{r}
+ r_u1 <- pooled %>% 
+  filter(year == "2002") %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="2002") + coord_polar(theta = "y", start=0) + scale_fill_manual(values=c("#33658A", "#55DDE0"))
+r_u2 <-  pooled %>% 
+  filter(year == "2019") %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="2019") + coord_polar(theta = "y", start=0) + scale_fill_manual(values=c("#33658A", "#55DDE0"))
+
+grid.arrange(r_u1, r_u2, nrow=1, top="Does Russians and Ukrainians form the same nation?")
+```
+We decided to use dif-in-dif approach for inspecting the effect of war and build the logit model targeting on variable of apprehension Ukrainians and Russian as the same public, the control group was the sample from west region, the treatment group was the eastern sample. 
+
+```{r}
+pooled.policy <- subset(pooled, east + west == 1)
+pooled.policy$y2019 <- ifelse(pooled.policy$year == "2019", 1, 0)
+```
+
+
+
+```{r}
+war_effect_russia <- glm(r_u_same ~ y2019 + east + y2019 * east + poor + very_poor + higher_edu + trust_ZMI + move_forever, pooled.policy, family = binomial(logit))
+summary(war_effect_russia)
+```
+The results looks not optimistic, you can find them in the end of the section.  It requires further analysis, but from our results it seems like Ukraine loses information war. $y19*east$ positively correlate with target variable and significant at $\alpha =  0.1$,  what meanst hat having other factors fixed people from the east in 2019 feel more close to Russia.
+#The effect of informational war on eastern people life satisfaction
+```{r}
+war_effect_satisfaction <- lm(life_satisf ~ y2019 + east + y2019 * east +with_parents + trust_friends + trust_ZMI + move_forever + trust_banks, pooled.policy)
+summary(war_effect_satisfaction)
+```
+The good news is people in 2019 are happier than in 2002; we have a positive trend. $y19*east is not significant even at $\alpha =  0.1$, so we can say that there is no effectof the war in your region on your life satisfaction compared to the effect on people in other regions. Probably, the war is more about nations, than specific regions.
+
+#The effect of informational war on eastern people desire to move from Ukraine
+```{r}
+war_effect_move <- glm(move_forever ~ y2019 + east + y2019 * east +with_parents + trust_friends + trust_ZMI + move_forever + trust_banks + trust_president + trust_family + trust_edu + poor + very_poor + higher_edu, pooled.policy, family = binomial(logit))
+summary(war_effect_move)
+```
+The results are very logical: if you have higher education and money, you have greater chance to have good job with high salary somewhere out of Ukraine. The effect of war is also understandable, if you have a big chance to have your home in the conflict zone tommorrow, you want to eliminate this risk. Besides, there are a lot of people on the east, who treat Ukrain and Ukrainian culture as something extraneous and want to move to Russia: the war made them understand that Ukrain is a distinct country from Russia.
