@@ -1,0 +1,306 @@
+---
+title: "Inspection of causalities in voting preferences"
+author: "Anastasiia Livochka, Yarka Lyba"
+date: "27 Apr 2019"
+output:
+  html_document:
+    number_sections: yes
+    theme: readable
+    toc: yes
+---
+
+# Loadind packages
+```{r}
+library(gridExtra)
+library(base)
+library(factoextra)
+library(corrplot)
+library(dplyr)
+library(randomForest)
+library(ggplot2)
+```
+
+# Loadind data
+```{r}
+y2 <- read.csv(file="data2019_prepared.csv")
+y2$X <- NULL
+```
+
+# Visualization of voting outcomes in dataset
+Voting outcomes in or data coincide with real outcome of elections 2019 in Ukraine.
+```{r}
+pie <- ggplot(y2, aes(x = "", fill = factor(zelensk))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="Zelenskiy?")
+pie + coord_polar(theta = "y", start=0)
+```
+# Random Forest model and feature selection
+Data consist of 96 variables, so we need to select the most inportant features for solve the problem of overfitting. 
+
+```{r}
+electionsRF <- randomForest(factor(zelensk)~.-zelensk, y2,ntree=150)
+electionsRF
+```
+```{r}
+importance    <- importance(electionsRF)
+
+varImportance <- data.frame(Variables = row.names(importance), 
+                            Importance = round(importance[ ,'MeanDecreaseGini'],2)) 
+top20 <- dplyr::arrange(varImportance, desc(Importance))[1:20, ]
+top20$Variables
+rankImportance <- top20 %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+ggplot(rankImportance, aes(x = reorder(Variables, Importance), 
+                           y = Importance, fill = Importance)) +
+  geom_bar(stat='identity') + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+            hjust=0, vjust=0.55, size = 4, colour = 'red') +
+  labs(x = 'Variables') +
+  coord_flip() + 
+  theme_classic()
+```
+Selecting the most important variables for inspecting the causalities
+```{r}
+y2.important <- dplyr::select(y2, zelensk, trust_president, west, gas_cheap, east, trust_parl, trust_army, abroad_west, trust_church, trust_police, r_u_same, rus_language, alco, gov_all, east_komprom, greek_cath, move_forever, trust_family,   trust_edu, trust_banks, life_satisf)
+```
+
+Running the logit model with targeting whether the person vote for Zelenskiy
+```{r}
+election_model <- glm(factor(zelensk) ~. -zelensk, y2.important, family = binomial(logit))
+summary(election_model)
+```
+# Clustering people by their political views
+We decided to try clusterizing Ukrainian electorate by theit opinion about following things:
+```{r}
+y2.political <- dplyr::select(y2, gas_cheap, r_u_same, gov_all,  zelensk, trust_ZMI, trust_army, trust_court, trust_church,  trust_president, trust_parl, abroad_east, abroad_both, abroad_west, east_komprom, east_frozen, east_aggres, travel_ukr)
+```
+```{r}
+fviz_nbclust(y2.political, kmeans,method = "gap_stat")
+```
+
+We got optimal number of clusters equal to 4 via gap statistics method. You can find more here: https://www.datanovia.com/en/lessons/determining-the-optimal-number-of-clusters-3-must-know-methods/. 
+```{r}
+political_clusters <- kmeans(y2.political, 4)
+political_clusters$size
+```
+You can see that the number of people in clusters are pretty well balanced.
+
+
+## Visualization of clusters
+Firstly let's look on voting outcomes in clusters:
+```{r}
+ zel_1 <- y2.political[political_clusters$cluster==1,] %>%
+  ggplot(aes(x = "", fill = factor(zelensk))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+zel_2 <- y2.political[political_clusters$cluster==2,] %>%
+  ggplot(aes(x = "", fill = factor(zelensk))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0)
+
+zel_3 <- y2.political[political_clusters$cluster==3,] %>%
+  ggplot(aes(x = "", fill = factor(zelensk))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+zel_4 <- y2.political[political_clusters$cluster==4,] %>%
+  ggplot(aes(x = "", fill = factor(zelensk))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0)
+grid.arrange(zel_1, zel_2, zel_3, zel_4, nrow=2, top="Zelenskiy?")
+```
+<br/>**Fact1: The biggest fraction of people who support Zelenskiy is in the first cluster, the fourth cluster consist mainly of Poroshenko supporters**
+```{r}
+ r_u1 <- y2.political[political_clusters$cluster==1,] %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+r_u2 <- y2.political[political_clusters$cluster==2,] %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+ r_u3 <- y2.political[political_clusters$cluster==3,] %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+ r_u4 <- y2.political[political_clusters$cluster==4,] %>%
+  ggplot(aes(x = "", fill = factor(r_u_same))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+grid.arrange(r_u1,  r_u2, r_u3, r_u4, nrow=2, top="Does Russians and Ukrainians form one nation?")
+```
+<br/>**Fact2: The biggest fraction of people who consiber Ukrainian and Russian as the same public is in the first cluster, the smallest in the fourth**
+```{r}
+cheap1 <- y2.political[political_clusters$cluster==1,] %>%
+  ggplot(aes(x = "", fill = factor(gas_cheap))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+cheap2 <- y2.political[political_clusters$cluster==2,] %>%
+  ggplot(aes(x = "", fill = factor(gas_cheap))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+ cheap3 <- y2.political[political_clusters$cluster==3,] %>%
+  ggplot(aes(x = "", fill = factor(gas_cheap))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+ cheap4 <- y2.political[political_clusters$cluster==4,] %>%
+  ggplot(aes(x = "", fill = factor(gas_cheap))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+grid.arrange(cheap1,  cheap2, cheap3, cheap4, nrow=2, top="Some cheap gas?")
+```
+<br/>**Fact3:  The biggest fraction of people who support artificial reduction of tarrifs is in the first cluster, the smallest is in the fourth**
+```{r}
+all1 <- y2.political[political_clusters$cluster==1,] %>%
+  ggplot(aes(x = "", fill = factor(gov_all))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+all2 <- y2.political[political_clusters$cluster==2,] %>%
+  ggplot(aes(x = "", fill = factor(gov_all))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+ all3 <- y2.political[political_clusters$cluster==3,] %>%
+  ggplot(aes(x = "", fill = factor(gov_all))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+ all4 <- y2.political[political_clusters$cluster==4,] %>%
+  ggplot(aes(x = "", fill = factor(gov_all))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+grid.arrange(all1,  all2, all3, all4, nrow=2, top="All desires of the public?")
+```
+<br/>**Fact3:  The biggest fraction of people who support the policy of complying with all desires of the public is in the first public, the smallest is in the fourth**
+```{r}
+eu1 <- y2.political[political_clusters$cluster==1,] %>%
+  ggplot(aes(x = "", fill = factor(abroad_west))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+eu2 <- y2.political[political_clusters$cluster==2,] %>%
+  ggplot(aes(x = "", fill = factor(abroad_west))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+
+ eu3 <- y2.political[political_clusters$cluster==3,] %>%
+  ggplot(aes(x = "", fill = factor(abroad_west))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+ eu4 <- y2.political[political_clusters$cluster==4,] %>%
+  ggplot(aes(x = "", fill = factor(abroad_west))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="class", 
+       x=NULL, 
+       y=NULL, 
+       title="") + coord_polar(theta = "y", start=0) 
+grid.arrange(eu1,  eu2, eu3, eu4, nrow=2, top="Travelling to the Europe?")
+```
+<br/>**Fact4:  The biggest fraction of people who travel to the Europe is in the fourth cluster, the smallest is in the first one** <br/>
+More conclusions and interpretation you can find in the report attached at https://github.com/livochka/youth-opinion-Ukraine
